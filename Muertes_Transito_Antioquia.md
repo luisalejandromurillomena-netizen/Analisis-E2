@@ -65,3 +65,12 @@ Equipo E2 · Análisis de Datos Intermedio · Estud-IA (Capa 2)
 | `medio_transporte_limpio` | `medio_de_desplazamiento_o_transporte` | **T2:** `'Sin información'` pasa a `NULL` con `NULLIF(TRIM(...), 'Sin información')` |
 | `clase_o_tipo_de_accidente_de_transporte` | `clase_o_tipo_de_accidente_de_transporte` | Sin cambio |
 | `archivo_origen` | `archivo_origen` | Sin cambio (trazabilidad del archivo bruto) |
+
+## Mi consulta en 3 respuestas (S4)
+Consulta: sql/stg_s65h_7665.sql
+1. ¿Por qué en los controles de staging aparecen 9.756 filas tanto en bruto como en staging y 0 registros sin convertir en `anio_hecho`?
+Respuesta: Porque la capa de staging estandariza y limpia sin filtrar ni borrar registros, manteniendo las 9.756 filas originales. Que `anio_hecho IS NULL` sea 0 indica que todos los valores de `a_o_del_hecho` pudieron convertirse a entero (`INT64`) mediante `SAFE_CAST(TRIM(...))` sin fallos.
+2. ¿Por qué se incluyó la regla T2 para convertir `'Sin información'` a `NULL` en `medio_transporte_limpio` (pasando de 35 a 34 valores distintos)?
+Respuesta: Porque `'Sin información'` representa ausencia o desconocimiento del dato, no una categoría real de desplazamiento. Pasarlo a `NULL` evita inflar conteos de categorías y permite que en SQL se trate como dato faltante real (por eso `COUNT(DISTINCT ...)` pasa de 35 a 34).
+3. ¿Qué pasaría si quitamos la regla T1 o si en una próxima carga llegan valores de texto no numéricos en `a_o_del_hecho`?
+Respuesta: Si quitamos T1, el año seguiría como texto (`STRING`), lo que dificulta ordenamientos cronológicos, filtros numéricos o agregaciones limpias. Si en una carga futura llegan textos no numéricos, `SAFE_CAST` evita que la consulta falle por error de tipo y convierte esos casos puntuales a `NULL` para poder detectarlos en los controles.
