@@ -27,7 +27,7 @@ Equipo E2 · Análisis de Datos Intermedio · Estud-IA (Capa 2)
 ## Bitácora de decisiones
 
 | Fecha | Decisión | Por qué |
-|---|---|---|
+|19/11/2026| Filtrar por Antioquia | Dado que el volumen de datos a nivel de Colombia es grande, entonces respondió a una cuestión de eficiencia |
 | | | |
 
 ## Reglas del repositorio
