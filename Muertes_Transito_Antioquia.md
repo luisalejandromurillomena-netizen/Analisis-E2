@@ -38,39 +38,61 @@ Equipo E2 · Análisis de Datos Intermedio · Estud-IA (Capa 2)
 
 ## Carga y staging
 
-- **Tabla en bruto:** `bruto.s65h_7665` (9.756 filas, 43 columnas cargadas como texto desde Socrata).
-- **Vista en staging:** `staging.stg_s65h_7665` (`sql/stg_s65h_7665.sql`).
+- Tabla en bruto: `bruto.s65h_7665` (9.756 filas, 43 columnas cargadas como texto desde Socrata).
+- Vista en staging: `staging.stg_s65h_7665` (`sql/stg_s65h_7665.sql`).
+- Una fila = una víctima (no un accidente: la fuente no trae identificador de accidente).
+- El bruto trae todas las condiciones de la víctima (conductor, peatón, pasajero), no solo peatones.
+
+### Reglas
+
+- T1 Tipos: año e id a entero, mes de texto a número 1-12, código DANE a 5 dígitos.
+- T2 Catálogo: 9 municipios tenían dos nombres (ej. Itagui/Itagüí); queda uno por código.
+- T3 «Sin información», en cualquier mayúscula, pasa a nulo.
+- T4 Día y hora en un solo formato (minúsculas, sin paréntesis).
 
 ### Cifras de control (`sql/controles_stg.sql`)
 
 | Control | Bruto | Staging | ¿Es lo esperado? |
-|---|---|---|---|
-| Filas totales | 9.756 | 9.756 | Sí: el staging no filtra ni elimina filas |
-| T1: Año del hecho sin convertir (`anio_hecho IS NULL`) | — | 0 | Sí: las 9.756 filas convirtieron `a_o_del_hecho` a entero (`INT64`) sin errores |
-| T2: Valores distintos en medio de desplazamiento | 35 | 34 | Sí: T2 convirtió `'Sin información'` a `NULL` (1 categoría distinta menos) |
+|---|---|---|---|---|
+| Filas | 9.756 | 9.756 | Sí: el staging no quita filas |
+| Municipios distintos (T2) | 131 | 122 | Sí: coincide con los 122 códigos DANE distintos |
+| Año sin convertir (T1) | — | 0 | Sí: los 10 años (2015-2024) son numéricos |
+| Mes sin convertir (T1) | — | 1 | Sí: 1 fila traía «Sin información» |
+| Hora nula (T3) | — | 3.398 | Sí: filas que decían «Sin información» (34,8 %) |
+| Condición de la víctima nula (T3) | — | 404 | Sí: filas que decían «Sin información» |
+| Medio de transporte nulo (T3) | — | 414 | Sí: filas que decían «Sin información» |
 
-### Diccionario de columnas en `staging.stg_s65h_7665`
+### Decisiones
+
+- No se pasan al staging las columnas con un solo valor (departamento, manera de muerte, localidad) ni las de orientación sexual, identidad de género y pueblo indígena: «No había sido implementada» en todas las filas 2015-2021 significa que no se preguntaba, no que se desconoce.
+- «No aplica» se conserva: dice algo distinto a «no sé».
+
+### Diccionario de columnas
 
 | Columna en el staging | Viene de (bruto) | Regla |
 |---|---|---|
-| `socrata_id` | `socrata_id` | Sin cambio (identificador de fila en Socrata) |
-| `id` | `id` | Sin cambio |
-| `a_o_del_hecho` | `a_o_del_hecho` | Sin cambio (se conserva el texto original) |
-| `anio_hecho` | `a_o_del_hecho` | **T1:** texto a entero con `SAFE_CAST(TRIM(a_o_del_hecho) AS INT64)` |
-| `codigo_dane_municipio` | `codigo_dane_municipio` | Sin cambio |
-| `municipio_del_hecho_dane` | `municipio_del_hecho_dane` | Limpieza de espacios extremos con `TRIM(...)` |
-| `departamento_del_hecho_dane` | `departamento_del_hecho_dane` | Sin cambio |
-| `sexo_de_la_victima` | `sexo_de_la_victima` | Sin cambio |
-| `condicion_de_la_victima_at` | `condicion_de_la_victima_at` | Sin cambio |
-| `medio_transporte_limpio` | `medio_de_desplazamiento_o_transporte` | **T2:** `'Sin información'` pasa a `NULL` con `NULLIF(TRIM(...), 'Sin información')` |
-| `clase_o_tipo_de_accidente_de_transporte` | `clase_o_tipo_de_accidente_de_transporte` | Sin cambio |
-| `archivo_origen` | `archivo_origen` | Sin cambio (trazabilidad del archivo bruto) |
+| `id_fila` | `socrata_id` | Sin cambio |
+| `id_caso` | `id` | T1: texto a entero |
+| `anio` | `a_o_del_hecho` | T1: texto a entero |
+| `mes_num` | `mes_del_hecho` | T1: nombre del mes a número |
+| `dia_semana` | `dia_del_hecho` | T3, T4 |
+| `rango_hora` | `rango_de_hora_del_hecho_x_3_horas` | T3, T4 |
+| `cod_municipio` | `codigo_dane_municipio` | T1: completa a 5 dígitos |
+| `municipio` | `municipio_del_hecho_dane` | T2: un nombre por código |
+| `sexo` | `sexo_de_la_victima` | Sin cambio |
+| `ciclo_vital` | `ciclo_vital` | Sin cambio |
+| `grupo_edad` | `grupo_de_edad_quinquenal` | Sin cambio |
+| `condicion_victima` | `condicion_de_la_victima_at` | T3 |
+| `medio_transporte` | `medio_de_desplazamiento_o_transporte` | T3 |
+| `clase_accidente` | `clase_o_tipo_de_accidente_de_transporte` | Sin cambio |
+| `zona` | `zona_del_hecho` | T3 |
+| `archivo_origen` | `archivo_origen` | Sin cambio (trazabilidad) |
 
 ## Mi consulta en 3 respuestas (S4)
 Consulta: sql/stg_s65h_7665.sql
-1. ¿Por qué en los controles de staging aparecen 9.756 filas tanto en bruto como en staging y 0 registros sin convertir en `anio_hecho`?
-Respuesta: Porque la capa de staging estandariza y limpia sin filtrar ni borrar registros, manteniendo las 9.756 filas originales. Que `anio_hecho IS NULL` sea 0 indica que todos los valores de `a_o_del_hecho` pudieron convertirse a entero (`INT64`) mediante `SAFE_CAST(TRIM(...))` sin fallos.
-2. ¿Por qué se incluyó la regla T2 para convertir `'Sin información'` a `NULL` en `medio_transporte_limpio` (pasando de 35 a 34 valores distintos)?
-Respuesta: Porque `'Sin información'` representa ausencia o desconocimiento del dato, no una categoría real de desplazamiento. Pasarlo a `NULL` evita inflar conteos de categorías y permite que en SQL se trate como dato faltante real (por eso `COUNT(DISTINCT ...)` pasa de 35 a 34).
-3. ¿Qué pasaría si quitamos la regla T1 o si en una próxima carga llegan valores de texto no numéricos en `a_o_del_hecho`?
-Respuesta: Si quitamos T1, el año seguiría como texto (`STRING`), lo que dificulta ordenamientos cronológicos, filtros numéricos o agregaciones limpias. Si en una carga futura llegan textos no numéricos, `SAFE_CAST` evita que la consulta falle por error de tipo y convierte esos casos puntuales a `NULL` para poder detectarlos en los controles.cloudshell edit Muertes_Transito_Antioquia.md
+1. ¿Por qué en los controles de staging aparecen 9.756 filas tanto en bruto como en staging y 0 registros sin convertir en `anio`?
+Respuesta: Porque la capa de staging estandariza y limpia sin filtrar ni eliminar registros, conservando las 9.756 filas originales. Que `anio` tenga 0 registros sin convertir indica que las 10 anualidades (2015-2024) en `a_o_del_hecho` son numéricas y pasaron a entero sin fallos, mientras que en `mes_num` queda 1 registro sin convertir porque venía como «Sin información».
+2. ¿Por qué se aplicó la regla T3 para pasar «Sin información» a nulo en columnas como `medio_transporte` (414 nulos), `condicion_victima` (404 nulos) y `rango_hora` (3.398 nulos)?
+Respuesta: Porque «Sin información» (en cualquier mayúscula) indica ausencia o desconocimiento del dato, no una categoría válida. Convertir esos casos a nulo evita inflar categorías falsas y permite identificar con precisión los faltantes reales en SQL (`medio_transporte` con 414 nulos, `condicion_victima` con 404 y `rango_hora` con 3.398, equivalentes al 34,8 % del total).
+3. ¿Qué pasaría si quitamos la regla T1 o si en una próxima carga llegan valores no numéricos en `a_o_del_hecho` o `id`?
+Respuesta: Si quitamos T1, campos como `anio`, `id_caso` y `mes_num` quedarían en formatos menos limpios o inconsistentes para ordenar, cruzar o filtrar, y los códigos municipales no quedarían estandarizados a 5 dígitos. Si en una futura carga llegan valores no numéricos en un campo entero, la conversión segura evita que todo el proceso falle y deja esos casos visibles para revisarlos en los controles.
